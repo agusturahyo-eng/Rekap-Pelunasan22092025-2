@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Rekap Lembar 1</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h2 { color: #0077b6; }
+    .hidden { display: none; }
+    table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #0077b6; color: white; cursor: pointer; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    button { margin: 10px 0; padding: 6px 12px; cursor: pointer; }
+    input { padding: 6px; margin: 10px 0; width: 50%; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+</head>
+<body>
+  <h2>📊 Rekap Lembar 1</h2>
+  <button onclick="goBack()" class="hidden" id="backBtn">⬅️ Kembali</button>
+  <input type="text" id="searchBox" placeholder="🔍 Cari..." onkeyup="filterTable()" class="hidden">
+  <button onclick="exportExcel()" class="hidden" id="exportBtn">⬇️ Export Excel</button>
+
+  <table id="dataTable">
+    <thead id="tableHead"></thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+
+  <script>
+    const SHEET_CSV_URL =
+      "https://docs.google.com/spreadsheets/d/e/2PACX-1vR0oO36v0vrge07HwX1zLsrGfuUxElZ3becef4DFHLNxsz2Lrohya5oThpvmkjzsNBF3_9hSdq0q4Ko/pub?gid=354207978&single=true&output=csv";
+
+    let allData = [];
+    let currentLevel = "petugas";
+    let currentPetugas = null;
+    let currentTanggal = null;
+
+    async function loadCSV() {
+      const res = await fetch(SHEET_CSV_URL);
+      const csvText = await res.text();
+
+      // deteksi pemisah otomatis
+      let parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+      if (parsed.meta.fields.length === 1) {
+        parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true, delimiter: ";" });
+      }
+      allData = parsed.data;
+
+      renderPetugas();
+    }
+
+    function renderPetugas() {
+      currentLevel = "petugas";
+      document.getElementById("backBtn").classList.add("hidden");
+      document.getElementById("searchBox").classList.add("hidden");
+      document.getElementById("exportBtn").classList.add("hidden");
+
+      const rekap = {};
+      allData.forEach(row => {
+        if (!rekap[row.petugas]) rekap[row.petugas] = 0;
+        rekap[row.petugas]++;
+      });
+
+      const headers = ["Petugas", "Jumlah Data"];
+      renderTableHeader(headers);
+
+      let bodyHTML = "";
+      Object.keys(rekap).forEach(p => {
+        bodyHTML += `<tr onclick="renderTanggal('${p}')"><td>${p}</td><td>${rekap[p]}</td></tr>`;
+      });
+      document.getElementById("tableBody").innerHTML = bodyHTML;
+    }
+
+    function renderTanggal(petugas) {
+      currentLevel = "tanggal";
+      currentPetugas = petugas;
+      document.getElementById("backBtn").classList.remove("hidden");
+      document.getElementById("searchBox").classList.add("hidden");
+      document.getElementById("exportBtn").classList.add("hidden");
+
+      const filtered = allData.filter(row => row.petugas === petugas);
+      const rekap = {};
+      filtered.forEach(row => {
+        if (!rekap[row.tgl_lunas]) rekap[row.tgl_lunas] = 0;
+        rekap[row.tgl_lunas]++;
+      });
+
+      const headers = ["Tanggal Lunas", "Jumlah Data"];
+      renderTableHeader(headers);
+
+      let bodyHTML = "";
+      Object.keys(rekap).forEach(tgl => {
+        bodyHTML += `<tr onclick="renderDetail('${tgl}')"><td>${tgl}</td><td>${rekap[tgl]}</td></tr>`;
+      });
+      document.getElementById("tableBody").innerHTML = bodyHTML;
+    }
+
+    function renderDetail(tanggal) {
+      currentLevel = "detail";
+      currentTanggal = tanggal;
+      document.getElementById("backBtn").classList.remove("hidden");
+      document.getElementById("searchBox").classList.remove("hidden");
+      document.getElementById("exportBtn").classList.remove("hidden");
+
+      const filtered = allData.filter(row => row.petugas === currentPetugas && row.tgl_lunas === tanggal);
+
+      const headers = ["idpel", "koked", "nama", "alamat", "tarif", "daya", "rttag", "rpbk", "jumlah", "petugas", "tgl_lunas"];
+      renderTableHeader(headers);
+
+      let bodyHTML = "";
+      filtered.forEach(row => {
+        bodyHTML += "<tr>";
+        headers.forEach(h => {
+          bodyHTML += `<td>${row[h] || ""}</td>`;
+        });
+        bodyHTML += "</tr>";
+      });
+      document.getElementById("tableBody").innerHTML = bodyHTML;
+    }
+
+    function renderTableHeader(headers) {
+      let headHTML = "<tr>";
+      headers.forEach(h => headHTML += `<th onclick="sortTable('${h}')">${h}</th>`);
+      headHTML += "</tr>";
+      document.getElementById("tableHead").innerHTML = headHTML;
+    }
+
+    function goBack() {
+      if (currentLevel === "tanggal") {
+        renderPetugas();
+      } else if (currentLevel === "detail") {
+        renderTanggal(currentPetugas);
+      }
+    }
+
+    function filterTable() {
+      const q = document.getElementById("searchBox").value.toLowerCase();
+      const rows = document.querySelectorAll("#tableBody tr");
+      rows.forEach(r => {
+        r.style.display = r.innerText.toLowerCase().includes(q) ? "" : "none";
+      });
+    }
+
+    function exportExcel() {
+      const table = document.getElementById("dataTable").outerHTML;
+      const blob = new Blob([table], { type: "application/vnd.ms-excel" });
+      saveAs(blob, "rekap_lembar1.xls");
+    }
+
+    function sortTable(colName) {
+      const rows = Array.from(document.querySelectorAll("#tableBody tr"));
+      const headers = Array.from(document.querySelectorAll("#tableHead th")).map(th => th.innerText);
+      const colIndex = headers.indexOf(colName);
+
+      rows.sort((a, b) => {
+        const A = a.cells[colIndex].innerText.toLowerCase();
+        const B = b.cells[colIndex].innerText.toLowerCase();
+        return A.localeCompare(B, "id");
+      });
+
+      const tbody = document.getElementById("tableBody");
+      tbody.innerHTML = "";
+      rows.forEach(r => tbody.appendChild(r));
+    }
+
+    loadCSV();
+  </script>
+</body>
+</html>
